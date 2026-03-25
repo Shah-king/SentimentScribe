@@ -82,19 +82,15 @@ st.caption(
     "Models: Logistic Regression · Naive Bayes · DistilBERT"
 )
 
-# Check API status
+# Check API status (silently — only show banner if explicitly online)
 try:
     health = requests.get(f"{API_URL}/health", timeout=3).json()
     api_ok = health.get("model_loaded", False)
 except Exception:
     api_ok = False
 
-col_status1, col_status2 = st.columns([1, 4])
-with col_status1:
-    if api_ok:
-        st.success("API Online", icon="✅")
-    else:
-        st.warning("API Offline — demo mode", icon="⚠️")
+if api_ok:
+    st.success("API Online", icon="✅")
 
 st.divider()
 
@@ -219,13 +215,23 @@ if predict_btn and user_review.strip():
                 unsafe_allow_html=True,
             )
     else:
-        # Offline demo using a simple heuristic
+        # Keyword heuristic when API is not connected
         positive_words = {"good", "great", "excellent", "love", "wonderful", "amazing", "best", "fantastic", "beautiful"}
         negative_words = {"bad", "terrible", "awful", "hate", "boring", "disappointing", "worst", "poor", "waste"}
         words = set(user_review.lower().split())
         pos_score = len(words & positive_words)
         neg_score = len(words & negative_words)
         sentiment = "Positive" if pos_score >= neg_score else "Negative"
-        st.info(f"Demo mode (API offline): **{sentiment}** (heuristic only)")
+        color = "#2ecc71" if sentiment == "Positive" else "#e74c3c"
+        icon = "😊" if sentiment == "Positive" else "😞"
+        st.markdown(
+            f"""
+            <div style="border-radius:10px; padding:20px; background:{color}22; border:2px solid {color}">
+                <h2 style="color:{color}; margin:0">{icon} {sentiment}</h2>
+                <p style="margin:8px 0 0 0; font-size:1.1em; color:#888">Keyword-based preview · Deploy API for ML-powered predictions</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 elif predict_btn:
     st.warning("Please enter a review before clicking Predict.")
