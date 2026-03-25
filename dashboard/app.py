@@ -20,7 +20,10 @@ import streamlit as st
 
 # ── Config ────────────────────────────────────────────────────────────────────
 API_URL = os.getenv("API_URL", "http://localhost:8000")
+# Works both locally and on Streamlit Community Cloud
 DATA_PATH = Path(__file__).parents[1] / "data" / "bookReviewsData.csv"
+if not DATA_PATH.exists():
+    DATA_PATH = Path(__file__).parent / "data" / "bookReviewsData.csv"
 
 st.set_page_config(
     page_title="SentimentScribe Dashboard",

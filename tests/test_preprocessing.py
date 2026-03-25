@@ -99,7 +99,8 @@ SAMPLE_CORPUS = [
 
 
 def test_preprocessor_fit_transform_shape():
-    tp = TextPreprocessor(max_features=100)
+    # min_df=1 because the sample corpus is tiny (5 docs)
+    tp = TextPreprocessor(max_features=100, min_df=1)
     X = tp.fit_transform(SAMPLE_CORPUS)
     assert X.shape[0] == len(SAMPLE_CORPUS)
 
@@ -111,7 +112,7 @@ def test_preprocessor_transform_without_fit_raises():
 
 
 def test_preprocessor_save_load(tmp_path):
-    tp = TextPreprocessor(max_features=100)
+    tp = TextPreprocessor(max_features=100, min_df=1)
     tp.fit(SAMPLE_CORPUS)
     save_path = tmp_path / "vectorizer.pkl"
     tp.save(save_path)
@@ -124,7 +125,7 @@ def test_preprocessor_save_load(tmp_path):
 
 
 def test_preprocessor_feature_names():
-    tp = TextPreprocessor(max_features=100)
+    tp = TextPreprocessor(max_features=100, min_df=1)
     tp.fit(SAMPLE_CORPUS)
     names = tp.get_feature_names()
     assert isinstance(names, list)
