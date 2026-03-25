@@ -1,0 +1,77 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SentimentScribe — Docker Compose stack
+#
+# Services:
+#   api        — FastAPI inference service     http://localhost:8000
+#   dashboard  — Streamlit analytics dashboard http://localhost:8501
+#   mlflow     — MLflow tracking server        http://localhost:5000
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Inference API ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sentimentscribe_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - ./experiments:/app/experiments
+      - ./logs:/app/logs
+    environment:
+      - MODEL_TYPE=${MODEL_TYPE:-sklearn}
+      - ARTIFACTS_DIR=experiments/artifacts
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    env_file:
+      - .env
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Streamlit dashboard ──────────────────────────────────────────────────
+  dashboard:
+    image: python:3.11-slim
+    container_name: sentimentscribe_dashboard
+    working_dir: /app
+    command: >
+      sh -c "pip install streamlit plotly pandas requests --quiet &&
+             streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0"
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ── MLflow tracking server ───────────────────────────────────────────────
+  mlflow:
+    image: python:3.11-slim
+    container_name: sentimentscribe_mlflow
+    command: >
+      sh -c "pip install mlflow --quiet &&
+             mlflow server --host 0.0.0.0 --port 5000
+             --backend-store-uri sqlite:///mlflow.db
+             --default-artifact-root /mlruns"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlruns
+      - mlflow_db:/mlflow.db
+    restart: unless-stopped
+
+volumes:
+  mlflow_data:
+  mlflow_db:

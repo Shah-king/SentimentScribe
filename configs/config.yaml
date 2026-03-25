@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SentimentScribe — Master Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Data settings
+data:
+  csv_path: data/bookReviewsData.csv
+  max_words: 500        # Truncate reviews longer than this
+  test_size: 0.2        # 80/20 train-test split
+  random_state: 42
+
+# TF-IDF vectorizer settings (used by sklearn baseline models)
+tfidf:
+  ngram_range: [1, 2]
+  max_features: 50000
+  max_df: 0.9
+  min_df: 5
+  sublinear_tf: true
+
+# Model hyperparameters
+models:
+
+  logistic_regression:
+    max_iter: 1000
+    C: 1.0
+
+  naive_bayes:
+    alpha: 1.0
+
+  distilbert:
+    checkpoint: distilbert-base-uncased
+    max_length: 256
+    num_epochs: 3
+    batch_size: 16
+    learning_rate: 2.0e-5
+    weight_decay: 0.01
+
+# MLflow tracking
+mlflow:
+  tracking_uri: mlruns       # local filesystem; change to remote URI for prod
+  experiment_name_baseline: sentimentscribe-baseline
+  experiment_name_transformer: sentimentscribe-distilbert
+
+# API settings
+api:
+  host: 0.0.0.0
+  port: 8000
+  model_type: sklearn        # "sklearn" or "distilbert"
+  artifacts_dir: experiments/artifacts
+
+# SHAP explainability
+explainability:
+  max_display: 20            # Top N features to visualise
+  output_dir: reports/shap
+
+# Monitoring
+monitoring:
+  reference_data_path: data/bookReviewsData.csv
+  reports_dir: reports
