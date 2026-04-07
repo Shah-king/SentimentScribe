@@ -15,9 +15,9 @@ build/
 
 # ML artifacts & experiments
 mlruns/
-experiments/artifacts/
+# experiments/artifacts/ — committed for deployment (252KB, sklearn only)
 experiments/distilbert/
-*.pkl
+# *.pkl — committed for deployment
 *.h5
 *.pt
 *.pth
