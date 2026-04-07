@@ -1,11 +1,12 @@
 # SentimentScribe 📚
 
 > **Production-ready Book Review Sentiment Analysis System**
-> End-to-end MLOps pipeline · REST API · Real-time dashboard · Experiment tracking
+> End-to-end MLOps pipeline · Authenticated REST API · Multi-feature dashboard · Experiment tracking
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-green.svg)](https://fastapi.tiangolo.com/)
 [![MLflow](https://img.shields.io/badge/MLflow-2.11-orange.svg)](https://mlflow.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20%2B%20DB-3ECF8E.svg)](https://supabase.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -13,7 +14,7 @@
 ## Overview
 
 SentimentScribe transforms raw book reviews into actionable business intelligence.
-The system classifies reviews as **positive** or **negative** using a production ML pipeline that scales from prototype to deployment.
+The system classifies reviews as **positive** or **negative** using a production ML pipeline with user authentication, persistent history, bulk analysis, and a developer API — built to scale from prototype to deployment.
 
 **Business value:**
 - Automate review moderation at scale
@@ -37,18 +38,21 @@ The system classifies reviews as **positive** or **negative** using a production
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     SentimentScribe System                       │
-├──────────────┬──────────────┬──────────────┬────────────────────┤
-│  Data Layer  │ Training     │  Serving     │  Observability     │
-│              │  Pipeline    │  Layer       │                    │
-│  CSV /       │  train.py    │  FastAPI     │  MLflow Tracking   │
-│  HuggingFace │     ↓        │  /predict    │  Evidently Drift   │
-│     ↓        │  TF-IDF      │  /batch      │  SHAP Explainer    │
-│  load_data   │  +sklearn    │     ↓        │  Streamlit Dash    │
-│  clean_and   │  or          │  Predictor   │                    │
-│  _label      │  DistilBERT  │  (cached)    │                    │
-└──────────────┴──────────────┴──────────────┴────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        SentimentScribe System v2                          │
+├──────────────┬──────────────┬───────────────────┬────────────────────────┤
+│  Data Layer  │  Training    │  Serving Layer    │  Observability         │
+│              │  Pipeline    │                   │                        │
+│  CSV /       │  train.py    │  FastAPI v2.0     │  MLflow Tracking       │
+│  HuggingFace │     ↓        │  /predict (pub)   │  Evidently Drift       │
+│     ↓        │  TF-IDF      │  /batch  (key)    │  SHAP Explainer        │
+│  load_data   │  +sklearn    │  /bulk-analyze    │  Streamlit Dashboard   │
+│  clean_and   │  or          │  /report/{id}     │    ├─ History          │
+│  _label      │  DistilBERT  │  /api-keys        │    ├─ Book Analyzer    │
+│              │              │       ↓           │    ├─ Bulk Upload      │
+│              │              │  Supabase Postgres│    ├─ Compare          │
+│              │              │  (auth + data)    │    └─ Developer        │
+└──────────────┴──────────────┴───────────────────┴────────────────────────┘
 ```
 
 ---
@@ -58,7 +62,7 @@ The system classifies reviews as **positive** or **negative** using a production
 ```
 SentimentScribe/
 │
-├── data/                          # Dataset files
+├── data/
 │   └── bookReviewsData.csv
 │
 ├── src/
@@ -72,21 +76,27 @@ SentimentScribe/
 │   ├── training/
 │   │   └── trainer.py             # MLflow-integrated training pipeline
 │   ├── inference/
-│   │   └── predictor.py           # Versioned model loader + inference
+│   │   └── predictor.py           # Versioned model loader + cached inference
 │   ├── monitoring/
 │   │   └── drift_detector.py      # Evidently AI drift detection
 │   └── utils/
-│       ├── logger.py              # Centralised logging
+│       ├── logger.py
 │       └── explainability.py     # SHAP feature importance
 │
 ├── api/
-│   └── main.py                    # FastAPI service (POST /predict, POST /batch)
+│   ├── main.py                    # FastAPI service — 7 endpoints
+│   └── auth.py                    # JWT + API key verification (Depends)
 │
 ├── dashboard/
-│   └── app.py                     # Streamlit business dashboard
+│   ├── app.py                     # Streamlit multi-page authenticated dashboard
+│   └── auth.py                    # Supabase login / signup / logout
+│
+├── supabase/
+│   └── migrations/
+│       └── 001_initial.sql        # predictions, api_keys, reports, bulk_jobs tables
 │
 ├── configs/
-│   └── config.yaml                # All hyperparameters & settings
+│   └── config.yaml                # All hyperparameters, feature flags, Supabase config
 │
 ├── tests/
 │   ├── test_preprocessing.py
@@ -96,9 +106,12 @@ SentimentScribe/
 ├── docker/
 │   └── Dockerfile
 │
+├── .streamlit/
+│   └── secrets.toml.example       # Template for local secrets (never commit secrets.toml)
+│
 ├── train.py                       # Training entry point
 ├── monitor.py                     # Drift monitoring entry point
-├── docker-compose.yml             # Full stack orchestration
+├── docker-compose.yml
 ├── requirements.txt
 ├── pyproject.toml
 └── .env.example
@@ -120,142 +133,167 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Add the dataset
+### 2. Set up Supabase (free)
 
-Place `bookReviewsData.csv` inside `data/`:
+1. Create a free project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor** → paste and run `supabase/migrations/001_initial.sql`
+3. Go to **Settings → API** → copy your **Project URL** and **anon key**
+
+Create `.streamlit/secrets.toml`:
+
+```toml
+SUPABASE_URL    = "https://your-project-ref.supabase.co"
+SUPABASE_ANON_KEY = "eyJ..."
+API_URL         = "http://localhost:8000"
+```
+
+### 3. Add the dataset
 
 ```
 data/
 └── bookReviewsData.csv    # columns: Review, Positive Review
 ```
 
-### 3. Train a model
+### 4. Train a model
 
 ```bash
-# Logistic Regression (fast, recommended first run)
+# Logistic Regression (fast, ~30 seconds)
 python train.py --model logistic_regression
 
-# Naive Bayes
-python train.py --model naive_bayes
-
-# DistilBERT (requires GPU, torch, transformers)
+# DistilBERT (requires GPU + torch)
 pip install torch transformers datasets
 python train.py --model distilbert
 ```
 
-MLflow logs are written to `mlruns/`. Launch the UI:
+MLflow UI: `mlflow ui` → `http://localhost:5000`
+
+### 5. Start the API
 
 ```bash
-mlflow ui                          # → http://localhost:5000
+uvicorn api.main:app --reload      # → http://localhost:8000/docs
 ```
 
-### 4. Start the API
+### 6. Start the dashboard
 
 ```bash
-uvicorn api.main:app --reload      # → http://localhost:8000
-```
-
-Interactive docs: `http://localhost:8000/docs`
-
-### 5. Start the dashboard
-
-```bash
-pip install streamlit plotly
 streamlit run dashboard/app.py     # → http://localhost:8501
 ```
 
 ---
 
+## Dashboard Features
+
+After signing in, users have access to six pages:
+
+| Page | Description | Auth required |
+|---|---|---|
+| **Dashboard** | Sentiment KPIs, distribution charts, keyword analysis, live prediction demo | Login |
+| **History** | Personal log of every prediction with trend chart and export | Login |
+| **Book Analyzer** | Search the dataset by keyword or title; see aggregated sentiment | Login |
+| **Bulk Upload** | Upload a CSV of reviews → enriched download + shareable report link | Login |
+| **Compare** | Side-by-side sentiment comparison of two reviews | Login |
+| **Developer** | Generate and manage personal API keys | Login |
+
+---
+
 ## API Reference
 
-### `POST /predict`
+### `POST /predict` — public
 
-Classify a single review.
+Classify a single review. No auth required.
 
-**Request**
+```json
+// Request
+{ "review": "A deeply moving and beautifully crafted novel." }
+
+// Response
+{ "sentiment": "positive", "confidence": 0.9241, "model_type": "sklearn" }
+```
+
+### `POST /batch` — requires API key
+
+Classify up to 100 reviews. Requires `X-API-Key` header.
+
+```bash
+curl -X POST http://localhost:8000/batch \
+  -H "X-API-Key: ss_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"reviews": ["Great book!", "Terrible waste of time."]}'
+```
+
+### `POST /bulk-analyze` — requires API key
+
+Upload a CSV file and receive a sentiment summary + shareable `report_id`.
+
+```bash
+curl -X POST http://localhost:8000/bulk-analyze \
+  -H "X-API-Key: ss_your_key_here" \
+  -F "file=@reviews.csv"
+```
+
 ```json
 {
-  "review": "A deeply moving and beautifully crafted novel."
+  "report_id": "uuid",
+  "total": 150,
+  "positive": 112,
+  "negative": 38,
+  "positive_pct": 74.7,
+  "negative_pct": 25.3
 }
 ```
 
-**Response**
-```json
-{
-  "sentiment": "positive",
-  "confidence": 0.9241,
-  "model_type": "sklearn"
-}
-```
+### `GET /report/{report_id}` — public
 
-### `POST /batch`
+Retrieve a shareable bulk analysis report. No auth required — anyone with the ID can view it.
 
-Classify up to 100 reviews in one request.
+### `POST /api-keys` — requires JWT
 
-**Request**
-```json
-{
-  "reviews": [
-    "Wonderful story, highly recommended.",
-    "Boring and poorly written."
-  ]
-}
-```
+Generate a new API key from the dashboard or programmatically.
 
-**Response**
-```json
-{
-  "predictions": [
-    {"sentiment": "positive", "confidence": 0.91, "model_type": "sklearn"},
-    {"sentiment": "negative", "confidence": 0.87, "model_type": "sklearn"}
-  ]
-}
-```
+### `GET /health` · `GET /model-info` — public
 
-### `GET /health`
+Ops probes for liveness and model metadata.
 
-Liveness probe — returns model load status.
+---
 
-### `GET /model-info`
+## Authentication
 
-Returns current model type and artifact directory.
+SentimentScribe uses **Supabase Auth** for user identity and **Supabase Postgres** for data persistence.
+
+| Layer | Implementation |
+|---|---|
+| User login / signup | Supabase email + password auth via `supabase-py` |
+| Session management | `st.session_state` stores JWT on successful login |
+| API key auth | SHA-256 hashed keys stored in `api_keys` table; verified per-request |
+| JWT verification | FastAPI `Depends(require_api_key)` decodes Supabase-issued JWTs via `python-jose` |
+| Data isolation | Supabase Row Level Security — users only see their own rows |
 
 ---
 
 ## Docker Deployment
 
-Run the full stack (API + Dashboard + MLflow) with a single command:
-
 ```bash
-# Copy env file
-cp .env.example .env
-
-# Build and start all services
+cp .env.example .env       # fill in SUPABASE_URL, SUPABASE_ANON_KEY
 docker compose up --build
 ```
 
 | Service | URL |
 |---|---|
 | Inference API | http://localhost:8000 |
+| API Docs | http://localhost:8000/docs |
 | Streamlit Dashboard | http://localhost:8501 |
 | MLflow UI | http://localhost:5000 |
-| API Docs (Swagger) | http://localhost:8000/docs |
 
 ---
 
 ## Monitoring & Drift Detection
 
-After collecting production traffic, detect feature or prediction drift:
-
 ```bash
-# Data drift (new reviews vs training distribution)
 python monitor.py --type data --current data/new_reviews.csv
-
-# Prediction drift (new predictions vs baseline)
 python monitor.py --type predictions --current data/new_predictions.csv
 ```
 
-HTML reports are written to `reports/`.
+HTML reports written to `reports/`.
 
 ---
 
@@ -269,10 +307,13 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 
 ## Configuration
 
-All hyperparameters are controlled via `configs/config.yaml`.
-No code changes needed to switch models, adjust feature settings, or change split ratios.
+All behaviour is controlled via `configs/config.yaml` — no code changes needed to switch models, toggle features, or adjust hyperparameters.
 
 ```yaml
+features:
+  require_auth_for_predict: false   # keep public demo open
+  require_auth_for_batch: true      # batch requires API key
+
 models:
   logistic_regression:
     max_iter: 1000
@@ -289,22 +330,24 @@ models:
 
 | Decision | Rationale |
 |---|---|
-| Extracted notebook → modules | Enables CI/CD, testing, and reproducibility |
-| Config-driven training | No code changes to tune hyperparameters |
+| Notebook → modular package | Enables CI/CD, testing, and reproducibility |
+| Supabase over SQLite/JWT-DIY | Free Postgres + Auth + RLS; works on Streamlit Cloud without a persistent filesystem |
+| Row Level Security on all tables | Users can never read each other's data even with the public anon key exposed |
+| `optional_auth` on `/predict` | Keeps the public demo accessible while enabling usage tracking for authenticated users |
 | `@lru_cache` on predictor | Single model load per process; thread-safe |
+| SHA-256 API key hashing | Raw key shown once at generation; only the hash is stored |
+| Config feature flags | `require_auth_for_predict` can flip without a redeploy |
 | Pydantic v2 validation | Runtime type safety on all API inputs |
-| Stratified train/test split | Preserves class balance in both splits |
-| HuggingFace DistilBERT | 40% smaller than BERT-base, 97% of performance |
 
 ---
 
 ## Roadmap
 
-- [ ] Add ONNX export for faster CPU inference
-- [ ] Redis caching layer for repeated predictions
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Kubernetes Helm chart
+- [ ] ONNX export for faster CPU inference
+- [ ] GitHub Actions CI/CD with automated test gates
+- [ ] Email alerts when drift is detected
 - [ ] A/B testing framework for model comparison
+- [ ] Kubernetes Helm chart
 
 ---
 
