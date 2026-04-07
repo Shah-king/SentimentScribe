@@ -401,13 +401,33 @@ elif page == "Book Analyzer":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "Bulk Upload":
     st.title("Bulk Sentiment Analysis")
-    st.caption("Upload a CSV of reviews → download enriched results with sentiment labels.")
+    st.caption("Upload any CSV of book reviews → download enriched results with sentiment labels.")
 
-    st.markdown("""
-    **CSV format required:** one column named `review` (or `Review`).
-    You can include other columns — they will be preserved in the output.
-    Maximum **500 rows** per upload.
-    """)
+    # ── Instructions + example download ──────────────────────────────────────
+    with st.expander("How it works + download example CSV", expanded=False):
+        st.markdown("""
+        **What this does:**
+        Upload a CSV file containing book reviews. The ML model will classify each review
+        as **positive** or **negative** and return a confidence score.
+        You can then download the enriched CSV with the results added.
+
+        **Accepted column names for your review text:**
+        `review`, `Review`, `text`, `Text`, `comment`, `Comment`, `description`
+
+        Any other columns in your file (title, author, date, etc.) are preserved as-is.
+
+        **Limits:** 500 rows per upload · CSV files only
+        """)
+        example_csv = "review,title,author\n"
+        example_csv += '"This book completely changed my perspective on life. Beautifully written.",The Alchemist,Paulo Coelho\n'
+        example_csv += '"Boring and repetitive. Could not finish it. Total waste of time.",Book 2,Author 2\n'
+        example_csv += '"A masterpiece. Every page kept me engaged and the ending was perfect.",Book 3,Author 3\n'
+        st.download_button(
+            label="Download example CSV",
+            data=example_csv,
+            file_name="example_reviews.csv",
+            mime="text/csv",
+        )
 
     uploaded = st.file_uploader("Upload your CSV", type=["csv"])
 
@@ -418,17 +438,39 @@ elif page == "Bulk Upload":
             st.error(f"Could not read CSV: {exc}")
             st.stop()
 
-        # Normalise column names
-        upload_df.columns = upload_df.columns.str.strip().str.lower()
-        if "review" not in upload_df.columns:
-            st.error("CSV must have a column named `review` or `Review`.")
+        # Flexible column detection — accept common review column names
+        upload_df.columns = upload_df.columns.str.strip()
+        col_map = {c.lower(): c for c in upload_df.columns}
+        review_col = next(
+            (col_map[k] for k in ["review", "text", "comment", "description"] if k in col_map),
+            None,
+        )
+
+        if review_col is None:
+            st.error(
+                f"Could not find a review column. Your columns: **{', '.join(upload_df.columns)}**\n\n"
+                "Rename your review column to `review`, `text`, or `comment` and re-upload."
+            )
             st.stop()
+
+        # Standardise internally
+        upload_df = upload_df.rename(columns={review_col: "review"})
+        upload_df.columns = upload_df.columns.str.lower()
 
         if len(upload_df) > 500:
             st.warning("File has more than 500 rows — processing first 500 only.")
             upload_df = upload_df.head(500)
 
-        st.info(f"Loaded **{len(upload_df)}** reviews. Click **Run Analysis** to continue.")
+        st.success(f"Loaded **{len(upload_df)}** reviews from `{uploaded.name}`")
+
+        if not api_ok:
+            st.warning(
+                "The ML API is not connected — results will use a keyword-based fallback "
+                "which is less accurate. For full ML predictions, deploy the FastAPI service "
+                "and set `API_URL` in your Streamlit secrets.",
+                icon="⚠️",
+            )
+
         run_btn = st.button("Run Analysis", type="primary")
 
         if run_btn:
