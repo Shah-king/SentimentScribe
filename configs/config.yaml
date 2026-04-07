@@ -57,3 +57,14 @@ explainability:
 monitoring:
   reference_data_path: data/bookReviewsData.csv
   reports_dir: reports
+
+# Supabase (values loaded from env / st.secrets at runtime)
+supabase:
+  url: ${SUPABASE_URL}
+  anon_key: ${SUPABASE_ANON_KEY}
+  jwt_secret: ${SUPABASE_JWT_SECRET}
+
+# Feature flags — toggle behaviour without code changes
+features:
+  require_auth_for_predict: false   # keep public demo accessible
+  require_auth_for_batch: true      # batch requires an API key

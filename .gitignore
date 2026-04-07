@@ -11,6 +11,7 @@ build/
 
 # Environment
 .env
+.streamlit/secrets.toml
 
 # ML artifacts & experiments
 mlruns/
