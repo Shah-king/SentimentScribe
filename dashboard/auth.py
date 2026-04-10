@@ -1,11 +1,15 @@
 """
 SentimentScribe — Supabase authentication layer.
 
+Supports:
+  - Email / password sign in and sign up
+  - Google OAuth (SSO) — no email verification required
+
 Usage in any Streamlit page:
     from dashboard.auth import require_auth, get_current_user, logout
 
-    require_auth()          # gate: shows login UI and calls st.stop() if not logged in
-    user = get_current_user()   # returns Supabase user dict after login
+    require_auth()               # gate: shows login UI and calls st.stop() if not logged in
+    user = get_current_user()    # returns Supabase user dict after login
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 
@@ -34,6 +39,7 @@ def _get_supabase() -> Client:
 
 def require_auth() -> None:
     """Gate function. If no active session, render login UI and halt the page."""
+    _handle_oauth_callback()
     if st.session_state.get("user") is None:
         _render_auth_ui()
         st.stop()
@@ -60,6 +66,25 @@ def logout() -> None:
     st.rerun()
 
 
+# ── OAuth callback handler ─────────────────────────────────────────────────────
+
+def _handle_oauth_callback() -> None:
+    """Detect a returning OAuth redirect and exchange the code for a session."""
+    code = st.query_params.get("code")
+    if not code or st.session_state.get("user"):
+        return
+    try:
+        resp = _get_supabase().auth.exchange_code_for_session({"auth_code": code})
+        if resp.user:
+            st.session_state["user"] = resp.user
+            st.session_state["access_token"] = resp.session.access_token
+            st.query_params.clear()
+            st.rerun()
+    except Exception as exc:
+        st.query_params.clear()
+        st.error(f"Google sign-in failed: {exc}")
+
+
 # ── Internal UI ───────────────────────────────────────────────────────────────
 
 def _render_auth_ui() -> None:
@@ -70,6 +95,12 @@ def _render_auth_ui() -> None:
         st.caption("Book review sentiment analysis · Sign in to continue")
         st.divider()
 
+        # Google SSO button
+        _google_oauth_button()
+
+        st.divider()
+        st.caption("or continue with email")
+
         tab_login, tab_signup = st.tabs(["Sign In", "Create Account"])
 
         with tab_login:
@@ -77,6 +108,27 @@ def _render_auth_ui() -> None:
 
         with tab_signup:
             _signup_form()
+
+
+def _google_oauth_button() -> None:
+    """Render the Google sign-in button and trigger the OAuth redirect."""
+    if st.button("Continue with Google", use_container_width=True, icon="🔵"):
+        app_url = st.secrets.get("APP_URL", "http://localhost:8501")
+        try:
+            resp = _get_supabase().auth.sign_in_with_oauth({
+                "provider": "google",
+                "options": {
+                    "redirect_to": app_url,
+                    "query_params": {"access_type": "offline", "prompt": "consent"},
+                },
+            })
+            # Navigate the parent window to Google's auth page
+            components.html(
+                f"<script>window.parent.location.href = '{resp.url}';</script>",
+                height=0,
+            )
+        except Exception as exc:
+            st.error(f"Could not start Google sign-in: {exc}")
 
 
 def _login_form() -> None:
