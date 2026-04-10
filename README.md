@@ -112,6 +112,7 @@ SentimentScribe/
 ├── train.py                       # Training entry point
 ├── monitor.py                     # Drift monitoring entry point
 ├── docker-compose.yml
+├── render.yaml                    # Render web service config
 ├── requirements.txt
 ├── pyproject.toml
 └── .env.example
@@ -142,9 +143,9 @@ pip install -r requirements.txt
 Create `.streamlit/secrets.toml`:
 
 ```toml
-SUPABASE_URL    = "https://your-project-ref.supabase.co"
+SUPABASE_URL      = "https://your-project-ref.supabase.co"
 SUPABASE_ANON_KEY = "eyJ..."
-API_URL         = "http://localhost:8000"
+API_URL           = "https://your-render-service.onrender.com"  # or http://localhost:8000 for local dev
 ```
 
 ### 3. Add the dataset
@@ -270,7 +271,36 @@ SentimentScribe uses **Supabase Auth** for user identity and **Supabase Postgres
 
 ---
 
-## Docker Deployment
+## Deployment
+
+### Render (FastAPI)
+
+The inference API is deployed to Render as a Python web service.
+
+1. Connect your GitHub repo on [dashboard.render.com](https://dashboard.render.com) → **New → Web Service**
+2. Set the build command to `pip install -r requirements.txt`
+3. Set the start command to `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+4. Add these environment variables in the Render dashboard:
+
+| Variable | Where to find it |
+|---|---|
+| `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
+| `SUPABASE_ANON_KEY` | Supabase → Project Settings → API → anon public key |
+| `SUPABASE_JWT_SECRET` | Supabase → Project Settings → API → JWT Secret |
+
+The `render.yaml` at the repo root documents the full service config.
+
+### Streamlit Community Cloud (Dashboard)
+
+The dashboard is deployed via [share.streamlit.io](https://share.streamlit.io). Set the following in **App Settings → Secrets**:
+
+```toml
+SUPABASE_URL      = "https://your-project-ref.supabase.co"
+SUPABASE_ANON_KEY = "eyJ..."
+API_URL           = "https://your-render-service.onrender.com"
+```
+
+### Docker (local full stack)
 
 ```bash
 cp .env.example .env       # fill in SUPABASE_URL, SUPABASE_ANON_KEY
