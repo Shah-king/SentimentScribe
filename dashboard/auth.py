@@ -78,8 +78,8 @@ def _render_auth_ui() -> None:
 
 def _login_form() -> None:
     with st.form("login_form"):
-        email = st.text_input("Email", placeholder="you@example.com")
-        password = st.text_input("Password", type="password")
+        email = st.text_input("Email", placeholder="you@example.com", key="login_email")
+        password = st.text_input("Password", type="password", key="login_pw")
         submitted = st.form_submit_button("Sign In", use_container_width=True, type="primary")
 
     if submitted:
@@ -92,9 +92,37 @@ def _login_form() -> None:
             )
             st.session_state["user"] = resp.user
             st.session_state["access_token"] = resp.session.access_token
+            st.session_state.pop("show_reset", None)
             st.rerun()
-        except Exception as exc:
-            st.error(f"Sign in failed: {exc}")
+        except Exception:
+            st.error("Incorrect email or password.")
+            st.session_state["reset_email_prefill"] = email
+            st.session_state["show_reset"] = True
+
+    if st.session_state.get("show_reset"):
+        st.divider()
+        st.warning("Forgot your password? Enter your email below to receive a reset link.")
+        prefill = st.session_state.get("reset_email_prefill", "")
+        reset_email = st.text_input("Email for password reset", value=prefill, key="reset_email_input")
+        if st.button("Send Reset Link", use_container_width=True):
+            _send_password_reset(reset_email)
+
+
+def _send_password_reset(email: str) -> None:
+    if not email:
+        st.error("Please enter your email address.")
+        return
+    app_url = st.secrets.get("APP_URL", "http://localhost:8501")
+    try:
+        _get_supabase().auth.reset_password_email(
+            email,
+            options={"redirect_to": app_url},
+        )
+        st.success(f"Reset link sent to {email}. Check your inbox and follow the link to set a new password.")
+        st.session_state.pop("show_reset", None)
+        st.session_state.pop("reset_email_prefill", None)
+    except Exception as exc:
+        st.error(f"Could not send reset email: {exc}")
 
 
 def _signup_form() -> None:
