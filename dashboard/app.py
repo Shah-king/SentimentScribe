@@ -52,6 +52,7 @@ st.set_page_config(
 # ── Auth gate — must be before any other rendering ────────────────────────────
 require_auth()
 user = get_current_user()
+demo_mode = st.session_state.get("demo_mode", False)
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -102,6 +103,8 @@ def call_api(review: str) -> dict:
 
 def _save_prediction(review: str, sentiment: str, confidence: float, model_type: str) -> None:
     """Persist a prediction to Supabase (best-effort, never blocks the UI)."""
+    if st.session_state.get("demo_mode"):
+        return
     try:
         supabase = get_supabase()
         supabase.table("predictions").insert({
@@ -150,7 +153,15 @@ except Exception:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 📚 SentimentScribe")
-    st.caption(f"Signed in as **{user.email}**")
+    if demo_mode:
+        st.markdown(
+            '<span style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;'
+            'padding:3px 10px;font-size:0.78rem;color:#92400e;font-weight:600">🚀 DEMO MODE</span>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Exploring as guest · No data saved")
+    else:
+        st.caption(f"Signed in as **{user.email}**")
     if st.button("Sign Out", use_container_width=True):
         logout()
 
@@ -172,6 +183,12 @@ with st.sidebar:
 if page == "Dashboard":
     st.title("📚 SentimentScribe")
     st.caption("Book review sentiment analysis · ML-powered insights")
+    if demo_mode:
+        st.info(
+            "🚀 **Demo Mode** — You're exploring with sample data. "
+            "[Create a free account](#) to save predictions and unlock all features.",
+            icon="ℹ️",
+        )
 
     try:
         df = load_data()
@@ -268,6 +285,9 @@ if page == "Dashboard":
 elif page == "History":
     st.title("My Prediction History")
     st.caption("Every review you've analyzed, saved to your account.")
+    if demo_mode:
+        st.warning("History requires an account. [Sign up](#) to start tracking your predictions.")
+        st.stop()
 
     try:
         supabase = get_supabase()
@@ -620,6 +640,9 @@ elif page == "Compare":
 elif page == "Developer":
     st.title("Developer — API Keys")
     st.caption("Generate personal API keys to call the SentimentScribe API from your own code.")
+    if demo_mode:
+        st.warning("API key management requires an account. [Sign up](#) to get your API keys.")
+        st.stop()
 
     # Show existing keys
     try:
