@@ -257,7 +257,7 @@ Ops probes for liveness and model metadata.
 
 ---
 
-## Authentication
+## Authentication & Login UI
 
 SentimentScribe uses **Supabase Auth** for user identity and **Supabase Postgres** for data persistence.
 
@@ -268,6 +268,36 @@ SentimentScribe uses **Supabase Auth** for user identity and **Supabase Postgres
 | API key auth | SHA-256 hashed keys stored in `api_keys` table; verified per-request |
 | JWT verification | FastAPI `Depends(require_api_key)` decodes Supabase-issued JWTs via `python-jose` |
 | Data isolation | Supabase Row Level Security — users only see their own rows |
+
+### Login Page Design
+
+The login page (`dashboard/auth.py`) is a custom-styled, production-quality auth UI built entirely within Streamlit using `st.markdown` CSS injection.
+
+**Layout — split-screen two-column:**
+
+- **Left panel** — indigo gradient branding card (`#6366f1 → #4f46e5 → #7c3aed`) with app name, tagline, feature bullets, and a live ML status badge. Implemented as pure HTML inside `st.columns()`.
+- **Right panel** — white auth card with sign-in / sign-up tab switcher, styled inputs with focus rings, primary gradient button, password reset flow, and demo mode CTA.
+
+**Key design decisions:**
+
+- Streamlit's default container padding is zeroed out via CSS targeting `[data-testid="stMain"]` so columns fill the full viewport flush edge-to-edge.
+- Column backgrounds (gradient left, white right) are applied by targeting `[data-testid="stColumn"]:first-child` and `:last-child` — no HTML div wrappers around Streamlit widgets (which don't work in Streamlit's fragment-based rendering model).
+- Static text blocks (title, subtitle, footer) use self-contained `st.markdown` HTML. Interactive widgets (`st.tabs`, `st.form`, `st.button`) are rendered directly in the column with no wrapper.
+- Responsive: left branding panel is hidden on screens narrower than 768px; right auth panel expands to full width.
+
+**Demo Mode:**
+
+The login page includes a "🚀 Try Demo — No account needed" button that bypasses authentication entirely:
+
+```python
+st.session_state["demo_mode"] = True
+```
+
+- Dashboard loads with full sample data
+- History and Developer pages are blocked with a sign-up prompt
+- Predictions are not saved to Supabase in demo mode
+- Sidebar shows a "DEMO MODE" badge instead of the user's email
+- Designed for recruiter and evaluator experience — no account required to see the full app
 
 ---
 
